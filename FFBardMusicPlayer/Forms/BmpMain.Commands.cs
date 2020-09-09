@@ -25,7 +25,6 @@ namespace FFBardMusicPlayer.Forms {
 			chatListener["note|nt"] = ChatCommandNote;
 			chatListener["open|op"] = ChatCommandOpen;
 			chatListener["close|cl"] = ChatCommandClose;
-			chatListener["command|cmd"] = ChatCommandCommand;
 			chatListener["delay|dl"] = ChatCommandDelay;
 			chatListener["seek|sk"] = ChatCommandSeek;
 			chatListener["loop|lp"] = ChatCommandLoop;
@@ -44,7 +43,7 @@ namespace FFBardMusicPlayer.Forms {
 
 		private bool IsCommandPermitted(BmpChatListener.Command cmd) {
 			if(Conductor.IsConductorName(cmd.sender)) {
-				if(cmd.sender == FFXIV.memory.currentPlayer.CurrentPlayer.Name) {
+				if(cmd.sender == FFXIV.GetMemory().localPlayer.name) {
 					// Disable making the same fucking command to yourself as conductor
 					return false;
 				}
@@ -73,7 +72,7 @@ namespace FFBardMusicPlayer.Forms {
 				if(int.TryParse(cmd.param, out int hotbarNum)) {
 					int hotbar = (int) Math.Floor(hotbarNum / 12.0);
 					int slot = hotbarNum % 12 - 1;
-					int job = FFXIV.memory.currentPlayer.CurrentPlayer.JobID;
+					int job = (int)FFXIV.memory.localPlayer.jobid;
 					if(FFXIV.GetHotkeyForHotbarSlot(hotbar, slot, job, out FFXIVKeybindDat.Keybind keybind)) {
 						FFXIV.hook.SendSyncKeybind(keybind);
 					}
@@ -174,16 +173,6 @@ namespace FFBardMusicPlayer.Forms {
 		private bool ChatCommandClose(BmpChatListener.Command cmd) {
 			if(IsCommandPermitted(cmd)) {
 				FFXIV.UnequipPerformance();
-			}
-			return true;
-		}
-		private bool ChatCommandCommand(BmpChatListener.Command cmd) {
-			if(IsCommandPermitted(cmd)) {
-				if(!string.IsNullOrEmpty(cmd.param)) {
-					if(Properties.Settings.Default.PlayLyrics) {
-						FFXIV.SendChatString(cmd.param);
-					}
-				}
 			}
 			return true;
 		}

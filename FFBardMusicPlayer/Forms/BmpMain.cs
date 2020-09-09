@@ -78,14 +78,6 @@ namespace FFBardMusicPlayer.Forms {
 			// Clear local orchestra
 			InfoTabs.TabPages.Remove(localOrchestraTab);
 
-			LocalOrchestra.onMemoryCheck += delegate (Object o, bool status) {
-				if(status) {
-					this.FFXIV.memory.StopThread();
-				} else {
-					this.FFXIV.memory.StartThread();
-				}
-			};
-
 			FFXIV.findProcessRequest += delegate (Object o, EventArgs empty) {
 				this.Invoke(t => t.FindProcess());
 			};
@@ -98,6 +90,7 @@ namespace FFBardMusicPlayer.Forms {
 				this.Invoke(t => t.Hotkeys_OnFileLoad(FFXIV.hotkeys));
 			};
 			FFXIV.hook.OnKeyPressed += Hook_OnKeyPressed;
+			/*
 			FFXIV.memory.OnProcessReady += delegate (object o, Process proc) {
 				this.Log(string.Format("[{0}] Process scanned and ready.", proc.Id));
 				if(Sharlayan.Reader.CanGetActors()) {
@@ -176,13 +169,13 @@ namespace FFBardMusicPlayer.Forms {
 			FFXIV.memory.OnPartyChanged += delegate (object o, PartyResult res) {
 				this.Invoke(t => t.LocalOrchestraUpdate());
 			};
+			*/
 
 			Player.OnStatusChange += delegate (object o, PlayerStatus status) {
 				this.Invoke(t => t.UpdatePerformance());
 			};
 
 			Player.OnSongSkip += OnSongSkip;
-			Player.OnMidiLyric += OnMidiLyric;
 
 			Player.OnMidiProgressChange += OnPlayProgressChange;
 
@@ -572,23 +565,6 @@ namespace FFBardMusicPlayer.Forms {
 			NextSong();
 		}
 
-
-		private void OnMidiLyric(Object o, string lyric) {
-			string chan = Properties.Settings.Default.ListenChannel;
-			if(chatListener.GetChatCommand(lyric, chan) is Func<bool> cmdChatFunc) {
-				if(cmdChatFunc()) {
-					return;
-				}
-			}
-			if(lyricListener.GetChatCommand(lyric, chan) is Func<bool> cmdLyricFunc) {
-				if(cmdLyricFunc()) {
-					return;
-				}
-			}
-			if(Properties.Settings.Default.PlayLyrics) {
-				FFXIV.SendChatString(lyric);
-			}
-		}
 		private void OnPlayProgressChange(Object o, int progress) {
 			if(LocalOrchestra.OrchestraEnabled) {
 				LocalOrchestra.PerformerProgress(progress);
@@ -631,7 +607,7 @@ namespace FFBardMusicPlayer.Forms {
 			if(Properties.Settings.Default.ForcedOpen) {
 				return;
 			}
-			if(FFXIV.IsPerformanceReady() && !FFXIV.memory.ChatInputOpen) {
+			if(FFXIV.IsPerformanceReady() && !FFXIV.GetMemory().ChatInputOpen) {
 
 				if(key == Keys.F10) {
 					foreach(FFXIVKeybindDat.Keybind keybind in FFXIV.hotkeys.GetPerformanceKeybinds()) {
