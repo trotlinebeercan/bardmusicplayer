@@ -13,13 +13,13 @@ namespace FFBardMusicPlayer
 {
     class Plugin_MMsong
     {
-        internal static MemoryStream Load(string filePath)
+        internal static MidiFile Load(string filePath)
         {
             try
             {
                 MMSong mmSong = JsonExtensions.DeserializeFromFileCompressed<MMSong>(filePath);
 
-                if (mmSong.schemaVersion != 1) throw new FileFormatException("Error: This mmsong file format is not understood.");
+                if (mmSong.schemaVersion < 1 && mmSong.schemaVersion > 2) throw new FileFormatException("Error: This mmsong file format is not understood.");
                 // For now, just play the first available song.
                 // if (mmSong.songs.Count != 1) throw new FileFormatException("Error: BMP currently only supports mmsong files with 1 song in them.");
 
@@ -43,6 +43,10 @@ namespace FFBardMusicPlayer
                         case Instrument.Horn:
                         case Instrument.Tuba:
                         case Instrument.Saxophone:
+                        case Instrument.Violin:
+                        case Instrument.Viola:
+                        case Instrument.Cello:
+                        case Instrument.DoubleBass:
                             bard.sequence = bard.sequence.ToDictionary(
                                 x => x.Key + 2,
                                 x => x.Value);
@@ -101,12 +105,7 @@ namespace FFBardMusicPlayer
                 using (var manager = new TimedEventsManager(sequence.GetTrackChunks().First().Events))
                     manager.Events.Add(new TimedEvent(new MarkerEvent(), (sequence.GetDuration<MetricTimeSpan>().TotalMicroseconds / 1000) + 100));
 
-                var stream = new MemoryStream();
-                sequence.Write(stream, MidiFileFormat.MultiTrack, new WritingSettings { CompressionPolicy = CompressionPolicy.NoCompression });
-                stream.Flush();
-                stream.Position = 0;
-                sequence = null;
-                return stream;
+                return sequence;
             }
             catch (Exception ex)
             {

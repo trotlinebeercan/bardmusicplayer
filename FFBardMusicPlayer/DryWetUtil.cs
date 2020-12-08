@@ -42,48 +42,55 @@ namespace FFBardMusicPlayer
                     return oldfile;
                 }
 
-                midiFile = MidiFile.Read(filePath, new ReadingSettings
+                if (Path.GetExtension(filePath).ToLower().Equals(".mmsong"))
                 {
-                    ReaderSettings = new ReaderSettings
-                    {
-                        ReadFromMemory = true
-                    },
-                    InvalidChunkSizePolicy = InvalidChunkSizePolicy.Ignore,
-                    InvalidMetaEventParameterValuePolicy = InvalidMetaEventParameterValuePolicy.SnapToLimits,
-                    InvalidChannelEventParameterValuePolicy = InvalidChannelEventParameterValuePolicy.SnapToLimits,
-                    InvalidSystemCommonEventParameterValuePolicy = InvalidSystemCommonEventParameterValuePolicy.SnapToLimits,
-                    MissedEndOfTrackPolicy = MissedEndOfTrackPolicy.Ignore,
-                    NotEnoughBytesPolicy = NotEnoughBytesPolicy.Ignore,
-                    UnexpectedTrackChunksCountPolicy = UnexpectedTrackChunksCountPolicy.Ignore,
-                    UnknownChannelEventPolicy = UnknownChannelEventPolicy.SkipStatusByteAndOneDataByte,
-                    UnknownChunkIdPolicy = UnknownChunkIdPolicy.ReadAsUnknownChunk
-                });
-
-                #region Require
-
-                if (midiFile == null)
-                {
-                    throw new ArgumentNullException();
+                    midiFile = Plugin_MMsong.Load(filePath).Clone();
                 }
                 else
                 {
-                    try
+                    midiFile = MidiFile.Read(filePath, new ReadingSettings
                     {
-                        if (midiFile.Chunks.Count < 1) throw new NotSupportedException();
-
-                        MidiFileFormat fileFormat = midiFile.OriginalFormat;
-
-                        if (fileFormat == MidiFileFormat.MultiSequence)
+                        ReaderSettings = new ReaderSettings
                         {
-                            throw new NotSupportedException();
+                            ReadFromMemory = true
+                        },
+                        InvalidChunkSizePolicy = InvalidChunkSizePolicy.Ignore,
+                        InvalidMetaEventParameterValuePolicy = InvalidMetaEventParameterValuePolicy.SnapToLimits,
+                        InvalidChannelEventParameterValuePolicy = InvalidChannelEventParameterValuePolicy.SnapToLimits,
+                        InvalidSystemCommonEventParameterValuePolicy = InvalidSystemCommonEventParameterValuePolicy.SnapToLimits,
+                        MissedEndOfTrackPolicy = MissedEndOfTrackPolicy.Ignore,
+                        NotEnoughBytesPolicy = NotEnoughBytesPolicy.Ignore,
+                        UnexpectedTrackChunksCountPolicy = UnexpectedTrackChunksCountPolicy.Ignore,
+                        UnknownChannelEventPolicy = UnknownChannelEventPolicy.SkipStatusByteAndOneDataByte,
+                        UnknownChunkIdPolicy = UnknownChunkIdPolicy.ReadAsUnknownChunk
+                    });
+
+                    #region Require
+
+                    if (midiFile == null)
+                    {
+                        throw new ArgumentNullException();
+                    }
+                    else
+                    {
+                        try
+                        {
+                            if (midiFile.Chunks.Count < 1) throw new NotSupportedException();
+
+                            MidiFileFormat fileFormat = midiFile.OriginalFormat;
+
+                            if (fileFormat == MidiFileFormat.MultiSequence)
+                            {
+                                throw new NotSupportedException();
+                            }
+                        }
+                        catch (Exception exception) when (exception is UnknownFileFormatException || exception is InvalidOperationException)
+                        {
+                            throw exception;
                         }
                     }
-                    catch (Exception exception) when (exception is UnknownFileFormatException || exception is InvalidOperationException)
-                    {
-                        throw exception;
-                    }
+                    #endregion
                 }
-                #endregion
 
                 Console.WriteLine("Scrubbing " + filePath);
                 var loaderWatch = Stopwatch.StartNew();
@@ -94,6 +101,11 @@ namespace FFBardMusicPlayer
                 newTrackChunks = new ConcurrentDictionary<int, TrackChunk>();
 
                 long firstNote = originalTrackChunks.GetNotes().First().GetTimedNoteOnEvent().TimeAs<MetricTimeSpan>(tempoMap).TotalMicroseconds / 1000;
+
+                TrackChunk allTracks = new TrackChunk();
+                allTracks.AddNotes(originalTrackChunks.GetNotes());
+                midiFile.Chunks.Add(allTracks);
+                originalTrackChunks = midiFile.GetTrackChunks();
 
                 Parallel.ForEach(originalTrackChunks.Where(x => x.GetNotes().Count() > 0), (originalChunk, loopState, index) =>
                 {
@@ -112,8 +124,8 @@ namespace FFBardMusicPlayer
 
                         try
                         {
-                            noteOnMS = note.GetTimedNoteOnEvent().TimeAs<MetricTimeSpan>(tempoMap).TotalMicroseconds / 1000 - firstNote;
-                            noteOffMS = note.GetTimedNoteOffEvent().TimeAs<MetricTimeSpan>(tempoMap).TotalMicroseconds / 1000 - firstNote;
+                            noteOnMS = 5000 + (note.GetTimedNoteOnEvent().TimeAs<MetricTimeSpan>(tempoMap).TotalMicroseconds / 1000) - firstNote;
+                            noteOffMS = 5000 + (note.GetTimedNoteOffEvent().TimeAs<MetricTimeSpan>(tempoMap).TotalMicroseconds / 1000) - firstNote;
                         }
                         catch (Exception) { continue; }
                         int noteNumber = note.NoteNumber;
@@ -269,10 +281,25 @@ namespace FFBardMusicPlayer
                 });
 
                 newMidiFile = new MidiFile();
-                newMidiFile.Chunks.Add(new TrackChunk());
+                newTrackChunks.TryRemove(newTrackChunks.Count, out TrackChunk trackZero);
+                newMidiFile.Chunks.Add(trackZero);
                 newMidiFile.TimeDivision = new TicksPerQuarterNoteTimeDivision(600);
                 using (TempoMapManager tempoManager = newMidiFile.ManageTempoMap()) tempoManager.SetTempo(0, Tempo.FromBeatsPerMinute(100));
                 newMidiFile.Chunks.AddRange(newTrackChunks.Values);
+
+                tempoMap = newMidiFile.GetTempoMap();
+                long delta = newMidiFile.GetTrackChunks().GetNotes().First().GetTimedNoteOnEvent().TimeAs<MetricTimeSpan>(tempoMap).TotalMicroseconds / 1000;
+                foreach (TrackChunk chunk in newMidiFile.GetTrackChunks())
+                {
+                    using (var notesManager = chunk.ManageNotes())
+                    {
+                        foreach (Note note in notesManager.Notes)
+                        {
+                            long newStart = note.Time - delta;
+                            note.Time = newStart;
+                        }
+                    }
+                }
 
                 var stream = new MemoryStream();
                 
@@ -391,6 +418,16 @@ namespace FFBardMusicPlayer
                 case "altosax":
                 case "altosaxophone":
                 case "saxophones": return (true, "Saxophone");
+                case "violin":
+                case "violins": return (true, "Violin");
+                case "viola":
+                case "violas": return (true, "Viola");
+                case "cello":
+                case "cellos": return (true, "Cello");
+                case "doublebass":
+                case "double_bass":
+                case "contrabass": return (true, "DoubleBass");
+
                 default: return (false, trackName);
             }
         }
@@ -445,6 +482,14 @@ namespace FFBardMusicPlayer
                 case 65:
                 case 66:
                 case 67: return (true, "Saxophone");
+
+                case 40: return (true, "Violin");
+
+                case 41: return (true, "Viola");
+
+                case 42: return (true, "Cello");
+
+                case 43: return (true, "DoubleBass");
             }
             return (true, null);
         }

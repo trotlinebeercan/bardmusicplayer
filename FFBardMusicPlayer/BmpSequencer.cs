@@ -100,7 +100,8 @@ namespace FFBardMusicPlayer {
 				if(loadedTrack >= Sequence.Count || loadedTrack < 0) {
 					return null;
 				}
-				return Sequence[loadedTrack];
+				if (Properties.Settings.Default.PlayAllTracks) return Sequence[0];
+				else return Sequence[loadedTrack];
 			}
 		}
 
@@ -375,8 +376,7 @@ namespace FFBardMusicPlayer {
 
 			loadedError = string.Empty;
 			try {
-				if (Path.GetExtension(file).ToLower().Equals(".mmsong")) Sequence = new Sequence(Plugin_MMsong.Load(file));
-				else Sequence = new Sequence(DryWetUtil.ScrubFile(file));
+				Sequence = new Sequence(DryWetUtil.ScrubFile(file));
 			} catch(Exception e) {
 				Console.WriteLine(e.StackTrace);
 				throw e;
